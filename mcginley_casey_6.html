@@ -1,0 +1,385 @@
+<!DOCTYPE html>
+<html>
+	<head>
+    <title>Country GDP vs Ease of business</title>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/d3/3.5.6/d3.min.js" charset="utf-8"></script>
+    <style>
+        html, body, div, h1, h2, h3, span{
+            margin: 0;
+            padding: 0;
+            border: 0;
+            outline: 0;
+            font-family: arial;
+        }
+        div#header {
+            background-color: #191987;
+            padding: 5px;
+        }
+        div#header h1{
+            color: white;
+        }
+        form {
+            display: inline-block;
+        }
+        div#search {
+            padding: 5px;
+            padding-top: 30px;
+            padding-bottom: 30px;
+        }
+        ul#list {
+            list-style-type: none;
+            margin: 0; 
+            padding: 15px;
+            border-top-style: none;
+            border-bottom-style: none;
+            border-left-style: none;
+            border-right-style: solid;
+            border-right-width: 2px;
+        }
+        div#left {
+            float: left;
+        }
+        div#right {
+            float: left;
+            padding-left: 30px;
+        }
+        div#listBlock {
+            width: 250px;
+        }
+        div#listBlock h1 {
+            padding-bottom: 10px;
+        }
+        circle {
+            fill: red;
+            opacity: 0.5;
+        }
+        .domain {
+            fill: none;
+            stroke: #000; 
+        }
+        div#tooltip {
+            background-color: white;
+            border: solid 1px #000;
+            width: auto;
+            height: auto;
+            padding: 10px;
+            padding-top: 5px;
+            padding-bottom: 5px;
+            font-family: calibri;
+            display: none; /* hides the div */
+            position: absolute; /* removes the div from the flow of the HTML */
+        }
+        span#countryName {
+            font-weight: bold;
+        }
+        div#legend {
+            padding: 10px;
+            padding-top: 5px;
+            padding-bottom: 5px;
+            margin-left: 20px;
+            margin-top: 10px;
+            border: dashed 1px #000;
+            display: inline-block;
+        }
+        .countryDetails {
+            display: block;
+        }
+        ul#legendElements {
+            list-style-type: none;
+            margin: 0px;
+        }
+        div#info {
+            height: 35px;
+        }
+        h3#infoHeader {
+            display: none;
+        }
+        .highlighted { 
+            background: #FFB380;
+        }
+    </style>
+	</head>
+
+	<body>
+        <div id="header">
+            <h1> Country GDP vs Ease of business </h1>
+        </div>
+        <div id="search">
+            <span>Search:</span> 
+            <input type="text" id="country" onkeyup="Controller.filter(this.value)">
+        </div>
+        <!-- We add a div to be used to display info for the tooltip -->
+        <div id="tooltip" style="top: auto;">
+            <span id="countryName" class="countryDetails">US</span>
+            <span id="countryEOB" class="countryDetails">154</span>
+            <span id="countryGDP" class="countryDetails">5654</span>
+        </div>
+        <div id="left">
+            <div id="listBlock">
+                <h1>Countries</h1>
+                <ul id="list"></ul>
+            </div>
+        </div>
+        <div id="right">
+            <!-- We add some div to be used to display info when we click on the viz elements -->
+            <div id="info">
+                <h3 id="infoHeader">Default</h3>
+            </div>
+            <div id="vizBlock">
+                <svg id="viz"></svg>
+            </div>
+            <div id="legend">
+                <h3 id="legendTitle">Legend:</h3>
+                <ul id="legendElements">
+                    <li>GDP: gross domestic product</li>
+                    <li>EOB: ease of business</li>
+                </ul>
+            </div>
+        </div>
+        <script type="text/javascript">
+            //Load data into global var countries
+            var countries;
+            
+            d3.csv("data.csv", function(data) {
+                countries = load(data);
+                List.init();
+                Scatterplot.init();
+                Dispatcher.add(List);
+                Dispatcher.add(Scatterplot);
+                Controller.load(countries);
+            });
+            
+            function load(data) {
+                var mappedData = data.map(function(d) {
+                    //Map the data
+                    return {
+                        name: d.Country,
+                        GDP: +d['GDP per Capita'].replace("$","").replace(",",""),
+                        GDPstring: d['GDP per Capita'],
+                        Year: new Date(d.Year).getYear() + 1900,
+                        EOB: +d['Ease of Business']
+                    }
+                });
+                
+                //Filter the data for the year 2012 only
+                mappedData = mappedData.filter(function(d) {
+                    return d.Year == 2012;
+                })
+                
+                //Sort in ascending order
+                mappedData = mappedData.sort(function(a,b) {
+                    return d3.ascending(a.name, b.name);
+                });
+                return mappedData;
+            }
+            
+            var Dispatcher = {
+                //Add a view to the dispatcher's list of subscribers
+                add: function(view) {
+                    if(!this.subscribers) { 
+                        this.subscribers = [];
+                    }
+                    this.subscribers.push(view);
+                },
+                
+                //Notify each subscriber
+                notify: function(type, payload) {
+                    this.subscribers.forEach(function(s) {
+                        s[type](payload);
+                    });
+                }
+            }
+            
+            var Controller = {
+                load: function (data) {
+                    this.data = data;
+                    Dispatcher.notify('update', this.data);
+                }, 
+                
+                filter: function(value) {
+                    var filtered_data = this.data.filter(function(d) {
+                        return d.name.toLowerCase().indexOf(value.toLowerCase()) > -1;
+                    });
+                    Dispatcher.notify('update', filtered_data);
+                },
+                
+                remove: function(d) {
+                    this.data.splice(this.getIndex(d), 1);
+                    Dispatcher.notify('update', this.data);
+                },
+                
+                getIndex: function(d) {
+                    for(var i = 0; i < this.data.length; i++){
+                        if(this.data[i].name == d.name) {
+                            return i;
+                        }
+                    }
+                    return -1;
+                }
+            }
+            
+            var List = {
+                init: function() {
+                    this.list = d3.select("#list");
+                },
+                
+                update: function(data) {
+                    var selection = this.list.selectAll("li").data(data, function(d) {
+                        return d.name; 
+                    }); 
+                    selection.enter().append("li")
+                        .text(function(d) { 
+                            return d.name; 
+                        })
+                        .on('mouseover', function(d) {
+                            Dispatcher.notify('onMouseover', d);
+                        })
+                        .on('mouseout', function(d) {
+                            Dispatcher.notify('onMouseout', d);
+                        })
+                        .on('click', function(d) {
+                            Dispatcher.notify('onClick', d);
+                        }).on('contextmenu', function(d) { 
+                            Dispatcher.notify('onRight', d);
+                        });
+                    selection.exit().remove();
+                },
+                
+                onMouseover: function(d) {
+                    this.list.selectAll("li")
+                        .classed('highlighted', function(e) { return d.name == e.name });
+                },
+                
+                onMouseout: function(d) {
+                    this.list.selectAll("li")
+                        .classed('highlighted', false);
+                },
+                
+                onClick: function(d) {
+                },
+                
+                onRight: function(d) {
+                }
+            }
+            
+            var Scatterplot = {
+                init: function() {
+                    //Set dimensions of the viz
+                    d3.select("#viz").attr("width", 700);
+                    d3.select("#viz").attr("height", 500);
+                    
+                    //Establish X scale
+                    this.x_scale = d3.scale.linear();
+                    this.x_scale.range([40, 690]);
+                    
+                    //Establish Y scale
+                    this.y_scale = d3.scale.linear();
+                    this.y_scale.range([10, 480]);
+                    
+                    //Establish X axis
+                    this.x_axis = d3.svg.axis(); 
+                    this.x_axis.scale(this.x_scale);
+                    this.x_axis.orient("bottom");
+
+                    //Format the tick elements
+                    this.x_axis.tickFormat(function(d) { 
+                        var s = "";
+                        if (d > 1000) {
+                            s = d/1000 + "k";
+                        } else {
+                            s = s + d;
+                        }
+                        return "$" + s;
+                    });
+
+                    //Establish Y axis
+                    this.y_axis = d3.svg.axis();
+                    this.y_axis.scale(this.y_scale);
+                    this.y_axis.orient("left");
+                    
+                    //Append the axis
+                    this.x_axis_group = d3.select("#viz")
+                        .append("g")
+                        .attr("transform", "translate(0,480)");
+                    this.y_axis_group = d3.select("#viz")
+                        .append("g")
+                        .attr("transform", "translate(40,0)");
+                },
+                
+                update: function(data) {
+                    var self = this;
+                    
+                    //Update the scale
+                    this.x_scale.domain([0, d3.max(data, function(c) { return c.GDP; })]);
+                    this.y_scale.domain([d3.max(data, function(c) { return c.EOB; }), 0]); //svg grows from the top-left
+                    
+                    //Select viz tag
+                    var selection = d3.select("#viz").selectAll("circle").data(data, function(c) { 
+                        return c.name; 
+                    }); 
+                    selection.enter().append("circle")
+                        .on('mouseover', function(d) {
+                            Dispatcher.notify('onMouseover', d);                            
+                        }).on('mouseout', function(d) { //mouseout is when the mouse stops hovering over the element
+                            Dispatcher.notify('onMouseout', d);
+                        }).on('click', function(d) {
+                            Dispatcher.notify('onClick', d);
+                        }).on('contextmenu', function(d) { 
+                            Dispatcher.notify('onRight', d);
+                        });
+                    
+                    selection.exit().remove();
+                    
+                    selection.transition().attr({
+                        r: 5,
+                        cx: function(d) { return self.x_scale(d.GDP) },
+                        cy: function(d) { return this.y_scale(d.EOB) }.bind(this)
+                    });
+                    
+                    //Update axes
+                    this.x_axis_group.transition().call(this.x_axis);
+                    this.y_axis_group.transition().call(this.y_axis);
+                },
+                
+                getItem: function(d) {
+                    return d3.select("#viz").selectAll("circle").filter(function(e) {
+                        return d.name == e.name;
+                    });
+                },
+                
+                onMouseover: function(d) {
+                    this.getItem(d)  //selects the current circle the user is hovering over
+                            .attr("r",10) //changes radius to 10
+                            .style("fill", "orange");
+                    var tooltip = d3.select("#tooltip");
+                    tooltip.select("#countryName").text(d.name);
+                    tooltip.select("#countryEOB").text("EOB:  " + d.EOB);
+                    tooltip.select("#countryGDP").text("GDP:  " + d.GDPstring);
+
+                    //style the tooltip to display where the mouse is
+                    tooltip.style("display", "block");
+                    tooltip.style("top", ((d3.event.y) + 10) + "px");	
+                    tooltip.style("left", ((d3.event.x) + 10) + "px");
+                },
+                
+                onMouseout: function(d) {
+                    this.getItem(d)
+                        .attr("r", 5)
+                        .style("fill", "red");
+                    d3.select("#tooltip").style("display", "none");
+                },
+                
+                onClick: function(d) {
+                    d3.select("#infoHeader")
+                                .text(d.name + ' - GDP: ' + d.GDPstring + ' - EOB: ' + d.EOB).style("display", "block");
+                },
+                
+                onRight: function(d) {
+                    d3.event.preventDefault(); //prevents the default context menu from displaying
+                    d3.select("#tooltip").style("display", "none");
+                    Controller.remove(d);
+                }
+            }
+        </script>
+	</body>
+</html>
